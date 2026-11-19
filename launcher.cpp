@@ -1520,6 +1520,12 @@ std::string get_system_fullname(const std::string& sys_name);
 // Forward declarations for the SD card update system (defined after show_sort_filter_menu)
 void run_update_flow(SDL_Renderer* renderer, const std::string& font_path, SDL_Texture* bg_tex, bool silent_if_none);
 void run_two_gamepad_patch_flow(SDL_Renderer* renderer, const std::string& font_path, SDL_Texture* bg_tex);
+static bool show_message_dialog(SDL_Renderer* renderer, const std::string& font_path,
+                                SDL_Texture* bg_tex,
+                                const std::vector<std::string>& lines,
+                                bool has_cancel = false,
+                                const char* ok_label = "OK",
+                                const char* cancel_label = "Cancel");
 
 // Forward declarations for audio (defined later in the file)
 extern SoundSample s_click, s_enter, s_back, s_fav;
@@ -1552,7 +1558,7 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
 
     int tab = 0; // 0 = TEMA, 1 = DISPLAY, 2 = OPTIONS, 3 = INFO, 4 = TOOLS
     int tools_sel = 0;
-    const int tools_count = 2; // "Check for Updates", "Download 2-Gamepad Patch"
+    const int tools_count = 3; // "Check for Updates", "Download 2-Gamepad Patch", "Primary Controller Mode"
 
     // Posizione del tema corrente nella lista
     int sel = 0;
@@ -1842,10 +1848,25 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
                         next_input = SDL_GetTicks() + 150;
                     } else if (btn == 1) { // A: run selected tool
                         play_sound(s_enter);
-                        if (tools_sel == 0)
+                        if (tools_sel == 0) {
                             run_update_flow(renderer, font_path, *bg_cur, false);
-                        else
+                        } else if (tools_sel == 1) {
                             run_two_gamepad_patch_flow(renderer, font_path, *bg_cur);
+                        } else if (tools_sel == 2) {
+                            bool is_ext = (access("/mnt/sdcard/.external_gamepad", F_OK) == 0) || (access("/sdcard/.external_gamepad", F_OK) == 0);
+                            if (is_ext) {
+                                unlink("/mnt/sdcard/.external_gamepad");
+                                unlink("/sdcard/.external_gamepad");
+                                show_message_dialog(renderer, font_path, *bg_cur,
+                                    {"Primary Controller Mode:", "Handheld Console (Player 1)", "Built-in controls are active for games."}, false, "OK");
+                            } else {
+                                std::ofstream f("/mnt/sdcard/.external_gamepad");
+                                if (!f) f.open("/sdcard/.external_gamepad");
+                                if (f) f << "1\n";
+                                show_message_dialog(renderer, font_path, *bg_cur,
+                                    {"Primary Controller Mode:", "External Gamepad (Player 1)", "USB gamepad is now Player 1 for games."}, false, "OK");
+                            }
+                        }
                         next_input = SDL_GetTicks() + 300;
                     } else if (btn == 3 || btn == 6) { play_sound(s_back); open = false; }
                 }
@@ -2222,7 +2243,9 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
         } else { // tab == 4: TOOLS
             int row_h = theme_cfg.menu_disp_row_h;
             int start_y = cont_y + 20;
-            const char* tool_labels[] = { "Check for Updates", "Download 2-Gamepad Patch" };
+            bool is_ext = (access("/mnt/sdcard/.external_gamepad", F_OK) == 0) || (access("/sdcard/.external_gamepad", F_OK) == 0);
+            std::string tool_p1_str = is_ext ? "Primary Controller: External Gamepad (USB)" : "Primary Controller: Handheld Console";
+            const char* tool_labels[] = { "Check for Updates", "Download 2-Gamepad Patch", tool_p1_str.c_str() };
             for (int i = 0; i < tools_count; i++) {
                 int ry = start_y + i * row_h;
                 if (i == tools_sel) {
@@ -5283,8 +5306,8 @@ static bool show_message_dialog(SDL_Renderer* renderer, const std::string& font_
                                  SDL_Texture* bg_tex,
                                  const std::vector<std::string>& lines,
                                  bool has_cancel,
-                                 const char* ok_label = "OK",
-                                 const char* cancel_label = "Cancel") {
+                                 const char* ok_label,
+                                 const char* cancel_label) {
     if (font_cache.find(20) == font_cache.end()) font_cache[20] = ttf_open_font(font_path, 20);
     if (font_cache.find(24) == font_cache.end()) font_cache[24] = ttf_open_font(font_path, 24);
     TTF_Font* f20 = font_cache.count(20) ? font_cache[20] : nullptr;
