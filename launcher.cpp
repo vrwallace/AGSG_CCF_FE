@@ -1526,6 +1526,8 @@ static bool show_message_dialog(SDL_Renderer* renderer, const std::string& font_
                                 bool has_cancel = false,
                                 const char* ok_label = "OK",
                                 const char* cancel_label = "Cancel");
+static void show_wait_screen(SDL_Renderer* renderer, const std::string& font_path,
+                             SDL_Texture* bg_tex, const std::string& message);
 
 // Forward declarations for audio (defined later in the file)
 extern SoundSample s_click, s_enter, s_back, s_fav;
@@ -1558,7 +1560,7 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
 
     int tab = 0; // 0 = TEMA, 1 = DISPLAY, 2 = OPTIONS, 3 = INFO, 4 = TOOLS
     int tools_sel = 0;
-    const int tools_count = 3; // "Check for Updates", "Download 2-Gamepad Patch", "Primary Controller Mode"
+    const int tools_count = 4; // "Check for Updates", "Download 2-Gamepad Patch", "Primary Controller Mode", "Update from GitHub"
 
     // Posizione del tema corrente nella lista
     int sel = 0;
@@ -1865,6 +1867,23 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
                                 if (f) f << "1\n";
                                 show_message_dialog(renderer, font_path, *bg_cur,
                                     {"Primary Controller Mode:", "External Gamepad (Player 1)", "USB gamepad is now Player 1 for games."}, false, "OK");
+                            }
+                        } else if (tools_sel == 3) {
+                            bool go = show_message_dialog(renderer, font_path, *bg_cur,
+                                {"Download & install latest updates from", "vrwallace GitHub repositories?", "Requires active Wi-Fi connection."}, true, "Yes", "No");
+                            if (go) {
+                                show_wait_screen(renderer, font_path, *bg_cur, "Updating from GitHub, please wait...");
+                                const char* gh_cmd = (access("/mnt/sdcard/bin/update_from_github.sh", F_OK) == 0)
+                                    ? "sh /mnt/sdcard/bin/update_from_github.sh"
+                                    : "sh /sdcard/bin/update_from_github.sh";
+                                int rc = system(gh_cmd);
+                                if (rc == 0) {
+                                    show_message_dialog(renderer, font_path, *bg_cur,
+                                        {"GitHub Update Successful!", "Latest launcher and scripts are installed.", "Please restart launcher to apply changes."}, false, "OK");
+                                } else {
+                                    show_message_dialog(renderer, font_path, *bg_cur,
+                                        {"GitHub Update Failed.", "Please check your Wi-Fi connection and try again."}, false, "OK");
+                                }
                             }
                         }
                         next_input = SDL_GetTicks() + 300;
@@ -2245,7 +2264,12 @@ bool show_theme_selector(SDL_Renderer* renderer, const std::string& font_path,
             int start_y = cont_y + 20;
             bool is_ext = (access("/mnt/sdcard/.external_gamepad", F_OK) == 0) || (access("/sdcard/.external_gamepad", F_OK) == 0);
             std::string tool_p1_str = is_ext ? "Primary Controller: External Gamepad (USB)" : "Primary Controller: Handheld Console";
-            const char* tool_labels[] = { "Check for Updates", "Download 2-Gamepad Patch", tool_p1_str.c_str() };
+            const char* tool_labels[] = {
+                "Check for Updates (Official Drive)",
+                "Download 2-Gamepad Patch",
+                tool_p1_str.c_str(),
+                "Update from GitHub (vrwallace)"
+            };
             for (int i = 0; i < tools_count; i++) {
                 int ry = start_y + i * row_h;
                 if (i == tools_sel) {
